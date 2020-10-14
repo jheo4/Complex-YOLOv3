@@ -165,8 +165,9 @@ if __name__ == "__main__":
                 ap_table += [[c, class_names[c], "%.5f" % AP[i]]]
             print(AsciiTable(ap_table).table)
             print(f"---- mAP {AP.mean()}")
-    
+
             #if epoch % opt.checkpoint_interval == 0:
             if AP.mean() > max_mAP:
                 torch.save(model.state_dict(), f"checkpoints/yolov3_ckpt_epoch-%d_MAP-%.2f.pth" % (epoch, AP.mean()))
                 max_mAP = AP.mean()
+

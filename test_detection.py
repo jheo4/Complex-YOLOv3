@@ -48,7 +48,7 @@ def predictions_to_kitti_format(img_detections, calib, img_shape_2d, img_size, R
         obj.t = l[1:4]
         obj.h,obj.w,obj.l = l[4:7]
         obj.ry = np.arctan2(math.sin(l[7]), math.cos(l[7]))
-    
+
         _, corners_3d = kitti_utils.compute_box_3d(obj, calib.P)
         corners3d.append(corners_3d)
         objects_new.append(obj)
@@ -75,7 +75,7 @@ def predictions_to_kitti_format(img_detections, calib, img_shape_2d, img_size, R
         obj.box2d = img_boxes[i, :]
 
     if RGB_Map is not None:
-        labels, noObjectLabels = kitti_utils.read_labels_for_bevbox(objects_new)    
+        labels, noObjectLabels = kitti_utils.read_labels_for_bevbox(objects_new)
         if not noObjectLabels:
             labels[:, 1:] = aug_utils.camera_to_lidar_box(labels[:, 1:], calib.V2C, calib.R0, calib.P) # convert rect cam to velo cord
 
@@ -106,23 +106,23 @@ if __name__ == "__main__":
     model.load_state_dict(torch.load(opt.weights_path))
     # Eval mode
     model.eval()
-    
+
     dataset = KittiYOLODataset(cnf.root_dir, split=opt.split, mode='TEST', folder=opt.folder, data_aug=False)
     data_loader = torch_data.DataLoader(dataset, 1, shuffle=False)
 
     Tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
 
-    start_time = time.time()                        
+    start_time = time.time()
     for index, (img_paths, bev_maps) in enumerate(data_loader):
-        
+
         # Configure bev image
         input_imgs = Variable(bev_maps.type(Tensor))
 
-        # Get detections 
+        # Get detections
         with torch.no_grad():
             detections = model(input_imgs)
-            detections = utils.non_max_suppression_rotated_bbox(detections, opt.conf_thres, opt.nms_thres) 
-        
+            detections = utils.non_max_suppression_rotated_bbox(detections, opt.conf_thres, opt.nms_thres)
+
         end_time = time.time()
         print(f"FPS: {(1.0/(end_time-start_time)):0.2f}")
         start_time = end_time
@@ -136,10 +136,10 @@ if __name__ == "__main__":
         RGB_Map[:, :, 2] = bev_maps[0, :, :]  # r_map
         RGB_Map[:, :, 1] = bev_maps[1, :, :]  # g_map
         RGB_Map[:, :, 0] = bev_maps[2, :, :]  # b_map
-        
+
         RGB_Map *= 255
         RGB_Map = RGB_Map.astype(np.uint8)
-        
+
         for detections in img_detections:
             if detections is None:
                 continue
@@ -153,12 +153,13 @@ if __name__ == "__main__":
 
         img2d = cv2.imread(img_paths[0])
         calib = kitti_utils.Calibration(img_paths[0].replace(".png", ".txt").replace("image_2", "calib"))
-        objects_pred = predictions_to_kitti_format(img_detections, calib, img2d.shape, opt.img_size)  
-        
+        objects_pred = predictions_to_kitti_format(img_detections, calib, img2d.shape, opt.img_size)
+
         img2d = mview.show_image_with_boxes(img2d, objects_pred, calib, False)
-        
+
         cv2.imshow("bev img", RGB_Map)
         cv2.imshow("img2d", img2d)
 
         if cv2.waitKey(0) & 0xFF == 27:
             break
+
