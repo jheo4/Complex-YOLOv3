@@ -233,6 +233,22 @@ class Calibration(object):
         pts_3d_rect = self.project_image_to_rect(uv_depth)
         return self.project_rect_to_velo(pts_3d_rect)
 
+    def convert_3d_object_xyz_into_2d_image_plane(self, obj_xyz):
+        """
+        :param obj_xyz: (N, 3) xyz in rect coordinate
+        :return: obj_xyz_in_img_plane: (N, 3) in rgb coordinate
+        """
+        sample_num = obj_xyz.shape[0]
+        obj_xyz_Nx4 = np.concatenate( (obj_xyz, np.ones((sample_num, 1))), axis=1 )
+        transposed_proj_4x3 = self.P.T
+        img_pts = np.matmul(obj_xyz_Nx4, transposed_proj_4x3)
+        for img_pt in img_pts:
+            img_pt[0] = img_pt[0] / img_pt[2]
+            img_pt[1] = img_pt[1] / img_pt[2]
+
+        return img_pts
+
+
     def corners3d_to_img_boxes(self, corners3d):
         """
         :param corners3d: (N, 8, 3) corners in rect coordinate
@@ -241,18 +257,22 @@ class Calibration(object):
         """
         sample_num = corners3d.shape[0]
         corners3d_hom = np.concatenate((corners3d, np.ones((sample_num, 8, 1))), axis=2)  # (N, 8, 4)
-
         img_pts = np.matmul(corners3d_hom, self.P.T)  # (N, 8, 3)
 
         x, y = img_pts[:, :, 0] / img_pts[:, :, 2], img_pts[:, :, 1] / img_pts[:, :, 2]
+        #print(f"x: {x}, y: {y}")
         x1, y1 = np.min(x, axis=1), np.min(y, axis=1)
         x2, y2 = np.max(x, axis=1), np.max(y, axis=1)
+        #print(f"x1: {x1}, y1: {y1}")
+        #print(f"x2: {x2}, y2: {y2}")
 
         boxes = np.concatenate((x1.reshape(-1, 1), y1.reshape(-1, 1), x2.reshape(-1, 1), y2.reshape(-1, 1)), axis=1)
         boxes_corner = np.concatenate((x.reshape(-1, 8, 1), y.reshape(-1, 8, 1)), axis=2)
+        #print(boxes)
+        #print(boxes_corner)
 
         return boxes, boxes_corner
- 
+
 def rotx(t):
     #3D Rotation about the x-axis.
     c = np.cos(t)
@@ -324,6 +344,26 @@ def project_to_image(pts_3d, P):
     pts_2d[:,0] /= pts_2d[:,2]
     pts_2d[:,1] /= pts_2d[:,2]
     return pts_2d[:,0:2]
+
+
+def compute_3d_object_context(obj, P):
+    # Radian into Degree
+    ry = obj.ry * 57.295779513
+    if(ry < 0):
+        ry += 360
+    xyz = [0, 0, 0]
+
+    xyz[0] = xyz[0] + obj.t[0]
+    xyz[1] = xyz[1] + obj.t[1]
+    xyz[2] = xyz[2] + obj.t[2]
+    xyz_1x4 = np.concatenate( (xyz, np.ones(1)), axis=0 )
+    transposed_proj_4x3 = P.T
+    img_xyz = np.matmul(xyz_1x4, transposed_proj_4x3)
+    img_xyz[0] = img_xyz[0] / img_xyz[2]
+    img_xyz[1] = img_xyz[1] / img_xyz[2]
+
+    return img_xyz, ry
+
 
 def compute_box_3d(obj, P):
     ''' Takes an object and a projection matrix (P) and projects the 3d
