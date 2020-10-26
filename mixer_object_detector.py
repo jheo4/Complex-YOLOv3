@@ -32,8 +32,6 @@ def predictions_to_kitti_format(img_detections, calib, img_shape_2d, img_size, R
             continue
         # Rescale the detection info w.r.t. the BEV image
         for x, y, w, l, im, re, conf, cls_conf, cls_pred in detections:
-            #print("test: ", x.item(), y.item(), w.item(), l.item(), im.item(), re.item(), conf.item(),
-            #        cls_conf.item(), cls_pred.item())
             yaw = np.arctan2(im, re)
             predictions[count, :] = cls_pred, x/img_size, y/img_size, w/img_size, l/img_size, im, re
             count += 1
@@ -44,8 +42,6 @@ def predictions_to_kitti_format(img_detections, calib, img_shape_2d, img_size, R
     # Convert LiDAR prediction values into camera values: x, y, z, h, w, l, ry(rx->ry)
     if predictions.shape[0]:
         predictions[:, 1:] = aug_utils.lidar_to_camera_box(predictions[:, 1:], calib.V2C, calib.R0, calib.P)
-        #print(f"c {predictions[0][0]}, x {predictions[0][1]}, y {predictions[0][2]}, z {predictions[0][3]}, ",
-        #      f"h {predictions[0][4]}, w {predictions[0][5]}, l {predictions[0][6]}, r {predictions[0][7]}")
 
     objects_new = []
     object_contexts = []
@@ -82,7 +78,15 @@ def predictions_to_kitti_format(img_detections, calib, img_shape_2d, img_size, R
         objects_new.append(obj)
         object_contexts.append(obj_ctx)
 
+    if RGB_Map is not None:
+        labels, noObjectLabels = kitti_utils.read_labels_for_bevbox(objects_new)
+        if not noObjectLabels:
+            labels[:, 1:] = aug_utils.camera_to_lidar_box(labels[:, 1:], calib.V2C, calib.R0, calib.P)
+        target = bev_utils.build_yolo_target(labels)
+        utils.draw_box_in_bev(RGB_Map, target)
+
     return objects_new, object_contexts
+
 
 if __name__ == "__main__":
     opt = DetectorOptions()
@@ -165,6 +169,30 @@ if __name__ == "__main__":
 
         img2d = mview.show_image_with_boxes(img2d, objects_pred, calib, False)
         cv2.imshow("img2d", img2d)
+
+        bev_maps = torch.squeeze(bev_maps).numpy()
+        rgb_map = np.zeros((cnf.BEV_WIDTH, cnf.BEV_WIDTH, 3))
+        rgb_map[:, :, 2] = bev_maps[0, :, :]
+        rgb_map[:, :, 1] = bev_maps[1, :, :]
+        rgb_map[:, :, 0] = bev_maps[2, :, :]
+        rgb_map *= 255
+        rgb_map = rgb_map.astype(np.uint8)
+
+        img_detections = []
+        img_detections.extend(detections)
+
+        for detections in img_detections:
+            if detections is None:
+                continue
+
+            # Rescale boxes to original image
+            detections = utils.rescale_boxes(detections, opt.img_size, rgb_map.shape[:2])
+            for x, y, w, l, im, re, conf, cls_conf, cls_pred in detections:
+                yaw = np.arctan2(im, re)
+                # Draw rotated box
+                bev_utils.drawRotatedBox(rgb_map, x, y, w, l, yaw, cnf.colors[int(cls_pred)])
+        cv2.imshow("bev img", rgb_map)
+
         if cv2.waitKey(0) & 0xFF == 27:
             break
 
